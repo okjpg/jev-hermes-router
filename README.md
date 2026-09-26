@@ -29,6 +29,8 @@ Precisa de Hermes 0.21.4 ou mais novo, com login por assinatura (ChatGPT ou Clau
 hermes plugins install okjpg/jev-hermes-router
 ```
 
+Se aparecer `Error: … was not published: … pm/uv.lock`, é um bug do gerenciador de plugins do Hermes 0.21.x, não do router. Confere com `hermes plugins list`: se `jev-hermes-router` aparece como `enabled`, instalou. Se aparece `not enabled`, roda `hermes plugins enable jev-hermes-router`.
+
 Abre o Hermes e roda:
 
 ```
