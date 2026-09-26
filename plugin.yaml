@@ -1,0 +1,38 @@
+name: jev-hermes-router
+version: 0.2.0
+description: "Escolhe o modelo certo pra cada mensagem (leve → máximo) usando o Jev da TypeSafe. Só dentro do provedor da sessão, só com login por assinatura (Codex / Claude). Falha aberta."
+author: "Bruno Okamoto · Pixel Educação"
+license: MIT
+homepage: https://github.com/okjpg/jev-hermes-router
+provides_hooks:
+  - pre_llm_call
+  - post_api_request
+  - transform_llm_output
+optional_env:
+  - TYPESAFE_API_KEY
+  - OPENROUTER_API_KEY
+config_schema:
+  provider:
+    type: str
+    description: "openai-codex · anthropic · ambos"
+  route:
+    type: str
+    description: "typesafe · openrouter (só o Jev; o LLM continua no OAuth)"
+  send_context:
+    type: bool
+    default: true
+    description: "Manda as 2 últimas mensagens do usuário junto com o prompt"
+  enabled:
+    type: bool
+    default: true
+  quiet:
+    type: bool
+    default: false
+  timeout_s:
+    type: float
+    default: 1.5
+  setup_done:
+    type: bool
+    default: false
+  setup_step:
+    type: str
