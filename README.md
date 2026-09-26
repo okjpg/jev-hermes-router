@@ -26,20 +26,14 @@ O "ok" **não desceu** pro modelo leve. O router entendeu que era continuação 
 Precisa de Hermes 0.21.4 ou mais novo, com login por assinatura (ChatGPT ou Claude).
 
 ```
-git clone https://github.com/okjpg/jev-hermes-router ~/.hermes/plugins/jev-hermes-router
-hermes plugins enable jev-hermes-router
+curl -fsSL https://raw.githubusercontent.com/okjpg/jev-hermes-router/main/install.sh | sh
 ```
 
-Se o `enable` reclamar de `pm/uv.lock`, é um bug do gerenciador de plugins do Hermes 0.21.x (não do router). Roda uma vez:
+O script clona em `~/.hermes/plugins/jev-hermes-router` e ativa. Ele existe porque `hermes plugins install` no Hermes 0.21.x cai num bug do gerenciador de plugins (procura `pm/uv.lock` no lugar errado); o script contorna isso. Quando o bug for corrigido, `hermes plugins install okjpg/jev-hermes-router` vai funcionar direto.
 
-```
-hermes plugins doctor jev-hermes-router
-hermes plugins enable jev-hermes-router
-```
+Prefere ver antes de rodar? [install.sh](install.sh) tem 40 linhas.
 
-e confere com `hermes plugins list`: `enabled … jev-hermes-router` significa que instalou. (`hermes plugins install okjpg/jev-hermes-router` também funciona quando esse bug estiver corrigido.)
-
-Abre o Hermes numa sessão nova e roda:
+Depois, abre o Hermes numa sessão nova e roda:
 
 ```
 /jev setup
