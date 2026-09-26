@@ -11,18 +11,26 @@ if ! command -v hermes >/dev/null 2>&1; then
   exit 1
 fi
 
-# Onde o Hermes realmente mora (o launcher é um script Python; a raiz é o pai de hermes_cli/)
-LAUNCHER="$(readlink -f "$(command -v hermes)")"
-ROOT="$(dirname "$LAUNCHER")"
-while [ "$ROOT" != "/" ] && [ ! -d "$ROOT/hermes_cli" ]; do ROOT="$(dirname "$ROOT")"; done
-if [ ! -d "$ROOT/hermes_cli" ]; then
-  ROOT="$(hermes --version 2>/dev/null | sed -n 's/.*(\(\/.*\)).*/\1/p' | head -1)"
-fi
-PY="$ROOT/venv/bin/python"
-if [ ! -x "$PY" ]; then
-  echo "não achei o Python do Hermes em $ROOT/venv/bin/python" >&2
+# Onde o Hermes realmente mora. O launcher `hermes` costuma rodar de uma cópia gerada
+# (installs/<id>/environments/<gen>/workspace), e é nela que o bug do pm/uv.lock aparece.
+# O source de verdade tem pm/uv.lock e um venv/ próprio. Procuramos nele.
+find_source() {
+  for cand in "$HERMES_SOURCE" /usr/local/lib/hermes-agent "$HOME/.hermes/hermes-agent" "$HOME/hermes-agent" /opt/hermes-agent; do
+    [ -n "$cand" ] && [ -f "$cand/pm/uv.lock" ] && [ -x "$cand/venv/bin/python" ] && { echo "$cand"; return; }
+  done
+  # último recurso: sobe a partir do launcher até achar hermes_cli/ com pm/uv.lock
+  d="$(dirname "$(readlink -f "$(command -v hermes)")")"
+  while [ "$d" != "/" ]; do
+    [ -f "$d/pm/uv.lock" ] && [ -x "$d/venv/bin/python" ] && { echo "$d"; return; }
+    d="$(dirname "$d")"
+  done
+}
+ROOT="$(find_source)"
+if [ -z "$ROOT" ]; then
+  echo "não achei o source do Hermes (pasta com pm/uv.lock e venv/). Se instalou em lugar próprio, roda: HERMES_SOURCE=/caminho sh install.sh" >&2
   exit 1
 fi
+PY="$ROOT/venv/bin/python"
 
 if [ -d "$DEST" ]; then
   echo "→ atualizando $DEST"
