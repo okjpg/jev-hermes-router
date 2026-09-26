@@ -26,18 +26,26 @@ O "ok" **não desceu** pro modelo leve. O router entendeu que era continuação 
 Precisa de Hermes 0.21.4 ou mais novo, com login por assinatura (ChatGPT ou Claude).
 
 ```
-hermes plugins install okjpg/jev-hermes-router
+git clone https://github.com/okjpg/jev-hermes-router ~/.hermes/plugins/jev-hermes-router
+hermes plugins enable jev-hermes-router
 ```
 
-Se aparecer `Error: … was not published: … pm/uv.lock`, é um bug do gerenciador de plugins do Hermes 0.21.x, não do router. Confere com `hermes plugins list`: se `jev-hermes-router` aparece como `enabled`, instalou. Se aparece `not enabled`, roda `hermes plugins enable jev-hermes-router`.
+Se o `enable` reclamar de `pm/uv.lock`, é um bug do gerenciador de plugins do Hermes 0.21.x (não do router). Roda uma vez:
 
-Abre o Hermes e roda:
+```
+hermes plugins doctor jev-hermes-router
+hermes plugins enable jev-hermes-router
+```
+
+e confere com `hermes plugins list`: `enabled … jev-hermes-router` significa que instalou. (`hermes plugins install okjpg/jev-hermes-router` também funciona quando esse bug estiver corrigido.)
+
+Abre o Hermes numa sessão nova e roda:
 
 ```
 /jev setup
 ```
 
-São 3 perguntas. Leva um minuto.
+São 3 perguntas. Leva um minuto. A chave do Jev vai no `~/.hermes/.env` como `TYPESAFE_API_KEY=...` (o wizard te diz onde pegar).
 
 ## O que ele faz
 
