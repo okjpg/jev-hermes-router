@@ -10,13 +10,15 @@ from dataclasses import dataclass, field
 TIERS = ("leve", "padrao", "pesado", "maximo")
 EFFORTS = ("low", "medium", "high", "xhigh")
 
+# Codex por assinatura (ChatGPT) só expõe luna/sol/astra; "terra" não existe nessa conta.
+# O nível "padrão" cai em luna com esforço maior (luna no high/xhigh é o uso barato que funciona).
 LADDERS = {
-    "openai-codex": ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-6-astra"),
+    "openai-codex": ("gpt-6-luna", "gpt-6-luna", "gpt-6-sol", "gpt-6-astra"),
     "anthropic": ("claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5", "claude-fable-5-1"),
 }
 # Família → degrau, pra reconhecer o modelo da sessão mesmo com sufixo (-900k, -5-5, data).
 FAMILY_TIER = {
-    "openai-codex": (("luna", 0), ("terra", 1), ("sol", 2), ("astra", 3)),
+    "openai-codex": (("luna", 0), ("sol", 2), ("astra", 3)),
     "anthropic": (("haiku", 0), ("sonnet", 1), ("opus", 2), ("fable", 3)),
 }
 

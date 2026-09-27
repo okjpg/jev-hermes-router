@@ -3,6 +3,8 @@
 Seu Hermes manda toda mensagem pro mesmo modelo, mesmo quando é só um "ok".
 Este plugin escolhe, a cada mensagem, o modelo certo pra ela: leve pro trivial, máximo pro que importa.
 
+(No Codex por assinatura só existem luna, sol e astra; o nível "padrão" roda em luna com esforço alto.)
+
 Quem escolhe é o [Jev](https://typesafe.ai), um modelo de decisão da TypeSafe. Ele não escreve nada, só aponta o dedo. Custa fração de centavo por mensagem (US$ 0,00003; mil mensagens dão 3 centavos de dólar).
 
 ```
@@ -48,7 +50,7 @@ São 3 perguntas. Leva um minuto. A chave do Jev vai no `~/.hermes/.env` como `T
 | Nível | Codex (login ChatGPT) | Anthropic (login Claude) |
 |---|---|---|
 | leve | gpt-6-luna | Haiku |
-| padrão | gpt-6-terra | Sonnet |
+| padrão | gpt-6-luna (esforço alto) | Sonnet |
 | pesado | gpt-6-sol | Opus |
 | máximo | gpt-6-astra | Fable |
 

@@ -161,7 +161,10 @@ def _apply(kw: dict, d: pol.Decision, data: dict) -> Optional[dict]:
     target = pol.LADDERS[provider][d.tier]
     request["model"] = target
     if provider == "openai-codex":
-        request["reasoning"] = {**(request.get("reasoning") or {}), "effort": d.effort}
+        effort = d.effort
+        if d.tier == 1:  # "padrão" no Codex é luna com esforço alto (não existe terra na assinatura)
+            effort = "high" if pol.EFFORTS.index(effort) < pol.EFFORTS.index("high") else effort
+        request["reasoning"] = {**(request.get("reasoning") or {}), "effort": effort}
     elif provider == "anthropic":
         _apply_anthropic_effort(request, target, d.effort)
     data["applied_model"] = target
@@ -346,7 +349,7 @@ def _explicacao() -> str:
     prov = _cfg("provider", "ambos")
     ladders = []
     if prov in ("openai-codex", "ambos"):
-        ladders.append("Sessão no ChatGPT: Luna → Terra → Sol → Astra")
+        ladders.append("Sessão no ChatGPT: Luna → Luna+ → Sol → Astra")
     if prov in ("anthropic", "ambos"):
         ladders.append("Sessão no Claude:  Haiku → Sonnet → Opus → Fable")
     return (

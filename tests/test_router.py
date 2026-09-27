@@ -227,7 +227,7 @@ class Hooks(unittest.TestCase):
             del sys.modules["hermes_cli.config"]
         self.assertEqual(saved, {"TYPESAFE_API_KEY": "apikey_teste"})
         fim = c("setup 1")
-        self.assertIn("Pronto. Como funciona", fim); self.assertIn("Luna → Terra → Sol → Astra", fim); self.assertNotIn("Haiku", fim)
+        self.assertIn("Pronto. Como funciona", fim); self.assertIn("Luna → Luna+ → Sol → Astra", fim); self.assertNotIn("Haiku", fim)
         self.assertTrue(self.ctx.cfg["setup_done"]); self.assertTrue(self.ctx.cfg["send_context"])
         self.assertIn("Setup já feito", c("setup 1"))
 
