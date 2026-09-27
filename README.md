@@ -86,6 +86,8 @@ Pra mandar só a mensagem atual: `/jev contexto off`.
 
 Chave do Jev fica no `.env` do Hermes (`TYPESAFE_API_KEY` ou `OPENROUTER_API_KEY`). Não vai pra log, pra config nem pro Git.
 
+O log local (`~/.hermes/plugin-data/jev-hermes-router/usage.jsonl`) guarda só números: modelo, tokens, a decisão e as probabilidades que o Jev devolveu. Nenhum texto seu ou do agente vai pra ele.
+
 ## Onde o Jev roda
 
 | | TypeSafe direto | OpenRouter |
@@ -189,7 +191,9 @@ Uma chamada ao Jev por mensagem, 4 perguntas: `tier`, `effort`, `continuation`, 
 2. Se `continuation ≥ 0,5`: fica no nível anterior da sessão (`segue`).
 3. Senão: desce um degrau se a massa de probabilidade até ele é ≥ 0,60; sobe pro degrau mais alto cuja massa a partir dele é ≥ 0,50.
 
-Validado em 162 turnos reais de uma semana de uso antes de sair. A política toda está em `policy.py`, 170 linhas, sem rede.
+Validado em 162 turnos reais de uma semana de uso antes de sair. A política toda está em `policy.py`, sem rede.
+
+Desde a 0.3.1, cada mensagem grava no log os sinais crus do Jev (`jev`: probabilidades, continuação, risco, esforço, degrau de partida e a versão dos limiares em `policy`). Com isso dá pra testar outros limiares sobre o seu histórico sem chamar o Jev de novo: `pol.decide(pol.answers_from_replay(linha["jev"]), ...)` reproduz a decisão original.
 
 ## Rodar os testes
 
@@ -197,7 +201,7 @@ Validado em 162 turnos reais de uma semana de uso antes de sair. A política tod
 python3 -m unittest discover -s tests -v
 ```
 
-33 testes, sem rede, sem Hermes.
+35 testes, sem rede, sem Hermes.
 
 ## Lineage
 

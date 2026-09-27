@@ -214,6 +214,8 @@ def on_post_api_request(**kw) -> None:
         "jev_effort": data["decision"].effort if "decision" in data else None,
         "asked": pol.TIERS[data["decision"].asked] if "decision" in data else None,
         "tags": data["decision"].tags if "decision" in data else [],
+        # sinais crus do Jev, só na 1ª chamada do turno: permitem recalibrar a política offline
+        "jev": data["decision"].replay_record() if "decision" in data and int(kw.get("api_call_count") or 1) == 1 else None,
         "prompt_tokens": usage.get("prompt_tokens"), "cache_read": usage.get("cache_read_tokens"),
         "cache_write": usage.get("cache_write_tokens"),
         # CanonicalUsage do Hermes chama de output_tokens; completion_tokens fica de fallback

@@ -79,6 +79,30 @@ class Politica(unittest.TestCase):
         self.assertEqual(pol.build_state("oi", ["a"], False)["recent_turns"], ["(contexto desligado)"])
 
 
+class Replay(unittest.TestCase):
+    """O log guarda o bastante pra decide() rodar de novo offline e dar o mesmo resultado."""
+    CASOS = [
+        (answers([0.95, 0.05, 0, 0], cont=0.45, effort=0), 2),
+        (answers([0.79, 0.16, 0.04, 0.01], cont=0.86), 2),
+        (answers([0.05, 0.1, 0.25, 0.6], stakes=0.93, effort=2.6), 1),
+        (answers([0.6, 0.3, 0.1, 0], stakes=0.85), 3),
+        (answers([0.1, 0.8, 0.1, 0], effort=0), 2),
+    ]
+
+    def test_replay_reproduz_a_decisao(self):
+        for ans, cur in self.CASOS:
+            d = pol.decide(ans, cur)
+            rec = json.loads(json.dumps(d.replay_record()))  # passa pelo jsonl
+            d2 = pol.decide(pol.answers_from_replay(rec), pol.TIERS.index(rec["from"]))
+            self.assertEqual((d2.tier, d2.effort, d2.tags), (d.tier, d.effort, d.tags))
+            self.assertEqual(rec["policy"], pol.POLICY_ID)
+
+    def test_replay_record_nao_tem_texto(self):
+        rec = pol.decide(answers([0.2, 0.5, 0.2, 0.1]), 1).replay_record()
+        self.assertEqual(set(rec), {"p", "cont", "stakes", "score", "from", "policy"})
+        self.assertTrue(all(isinstance(x, float) for x in rec["p"]))
+
+
 class Transporte(unittest.TestCase):
     def test_fetch_falso_ok(self):
         body = json.dumps({"answers": answers([1, 0, 0, 0]), "model": "jev-x", "usage": {"input_tokens": 5}}).encode()
@@ -218,6 +242,12 @@ class Hooks(unittest.TestCase):
         row = json.loads(plugin._usage_path().read_text().splitlines()[-1])
         self.assertEqual(row["effort"], "high"); self.assertEqual(row["jev_effort"], "low")
         self.assertEqual(row["completion_tokens"], 50); self.assertEqual(row["call"], 1); self.assertEqual(row["session"], "s3")
+        self.assertEqual(row["jev"]["p"], [0.1, 0.8, 0.1, 0.0]); self.assertEqual(row["jev"]["from"], "pesado")
+        # 2ª chamada do mesmo turno (loop de tools): não repete os sinais
+        self.ctx.mw["llm_request"](request=req, original_request=dict(req), turn_id="t3", session_id="s3", provider="openai-codex", model="gpt-6-sol", api_call_count=2)
+        self.ctx.hooks["post_api_request"](turn_id="t3", session_id="s3", provider="openai-codex", model="gpt-6-luna", response_model="gpt-6-luna",
+                                           api_call_count=2, usage={"prompt_tokens": 1100, "cache_read_tokens": 900, "output_tokens": 30})
+        self.assertIsNone(json.loads(plugin._usage_path().read_text().splitlines()[-1])["jev"])
         line = self.ctx.hooks["transform_llm_output"](response_text="r", turn_id="t3", session_id="s3")
         self.assertTrue(line.startswith("⚙️ padrao · esforço 2 ·"), line)
 

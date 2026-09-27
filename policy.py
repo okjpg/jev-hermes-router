@@ -27,6 +27,8 @@ DOWN_MASS = 0.60      # desce um degrau se P(tier ≤ degrau) ≥ 0.60
 UP_MASS = 0.50        # sobe até o degrau mais alto com P(tier ≥ degrau) ≥ 0.50
 CONT_HOLD = 0.50      # continuação ≥ 0.50 → nunca desce
 STAKES_FLOOR = 0.80   # risco ≥ 0.80 → nunca desce, esforço mínimo 1
+# identifica os limiares acima no log; o calibrador compara só linhas da mesma política
+POLICY_ID = f"d{DOWN_MASS}-u{UP_MASS}-c{CONT_HOLD}-s{STAKES_FLOOR}"
 CAP_CHARS = 2000
 
 TIER_CRITERIA = {
@@ -117,6 +119,14 @@ class Decision:
     stakes: float
     tags: list = field(default_factory=list)
     ms: int = 0
+    score: float = 1.0        # esforço cru do Jev (0..3)
+    current: int = 0          # degrau de onde a decisão partiu
+
+    def replay_record(self) -> dict:
+        """Tudo que decide() precisa pra ser reproduzida offline. Só números, nenhum texto."""
+        return {"p": [round(x, 4) for x in self.probs], "cont": round(self.cont, 4),
+                "stakes": round(self.stakes, 4), "score": round(self.score, 4),
+                "from": TIERS[self.current], "policy": POLICY_ID}
 
     @property
     def tier_name(self) -> str:
@@ -166,4 +176,11 @@ def decide(answers: dict, current: int, ms: int = 0) -> Decision:
         tags.append(f"segurou:{TIERS[asked]}")
 
     return Decision(tier=tier, effort=EFFORTS[eff_idx], asked=asked, probs=probs,
-                    cont=cont, stakes=stakes, tags=tags, ms=ms)
+                    cont=cont, stakes=stakes, tags=tags, ms=ms, score=score, current=current)
+
+
+def answers_from_replay(rec: dict) -> dict:
+    """Inverso de Decision.replay_record(): monta ``answers`` pra rodar decide() de novo."""
+    return {"tier": {"probabilities": dict(zip(TIERS, rec["p"]))},
+            "continuation": {"noul": rec["cont"]}, "stakes": {"noul": rec["stakes"]},
+            "effort": {"score": rec["score"]}}
