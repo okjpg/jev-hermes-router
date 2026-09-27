@@ -18,6 +18,7 @@ PKG = HERE.name.replace("-", "_") if False else HERE.name
 plugin = importlib.import_module(f"{PKG}")
 pol = importlib.import_module(f"{PKG}.policy")
 jev = importlib.import_module(f"{PKG}.jev")
+rep = importlib.import_module(f"{PKG}.report")
 
 
 def answers(probs, cont=0.1, stakes=0.1, effort=1.0):
@@ -206,6 +207,35 @@ class Hooks(unittest.TestCase):
         self.assertTrue(line.startswith("⚙️ leve · esforço 0 · 95% · 600ms\n\nresp"), line)
         self.assertIn("leve 1", plugin._stats())
 
+    def test_padrao_codex_linha_e_log_mostram_esforco_aplicado(self):
+        self._answers = answers([0.1, 0.8, 0.1, 0], effort=0)
+        self.ctx.hooks["pre_llm_call"](session_id="s3", turn_id="t3", user_message="explica idempotência", platform="desktop", parent_session_id="", model="gpt-6-sol")
+        req = {"model": "gpt-6-sol", "input": [], "reasoning": {"effort": "high"}}
+        out = self.ctx.mw["llm_request"](request=req, original_request=dict(req), turn_id="t3", session_id="s3", provider="openai-codex", model="gpt-6-sol", api_call_count=1)
+        self.assertEqual(out["request"]["model"], "gpt-6-luna"); self.assertEqual(out["request"]["reasoning"]["effort"], "high")
+        self.ctx.hooks["post_api_request"](turn_id="t3", session_id="s3", provider="openai-codex", model="gpt-6-luna", response_model="gpt-6-luna",
+                                           api_call_count=1, usage={"prompt_tokens": 1000, "cache_read_tokens": 0, "output_tokens": 50, "reasoning_tokens": 20})
+        row = json.loads(plugin._usage_path().read_text().splitlines()[-1])
+        self.assertEqual(row["effort"], "high"); self.assertEqual(row["jev_effort"], "low")
+        self.assertEqual(row["completion_tokens"], 50); self.assertEqual(row["call"], 1); self.assertEqual(row["session"], "s3")
+        line = self.ctx.hooks["transform_llm_output"](response_text="r", turn_id="t3", session_id="s3")
+        self.assertTrue(line.startswith("⚙️ padrao · esforço 2 ·"), line)
+
+    def test_relatorio_pelo_comando(self):
+        self._turn("Ok")
+        self.ctx.hooks["post_api_request"](turn_id="t1", session_id="s1", provider="anthropic", model="claude-haiku-4-5", api_call_count=1,
+                                           usage={"prompt_tokens": 20000, "cache_read_tokens": 0, "output_tokens": 100})
+        plugin._data_dir = lambda: Path(self.tmp)
+        orig = rep.relatorio
+        seen = {}
+        rep.relatorio = lambda root, janela="24h", *a, **k: seen.setdefault("args", (root, janela)) and "ok"
+        try:
+            self.assertEqual(self.ctx.cmds["jev"]("relatorio semana"), "ok")
+            self.assertEqual(seen["args"][1], "7d")
+            self.assertIn("Uso:", self.ctx.cmds["jev"]("relatorio ontem"))
+        finally:
+            rep.relatorio = orig
+
     def test_quieto_e_desligado(self):
         self.ctx.cfg["quiet"] = True; self._turn("Ok")
         self.assertIsNone(self.ctx.hooks["transform_llm_output"](response_text="r", turn_id="t1", session_id="s1"))
@@ -230,6 +260,55 @@ class Hooks(unittest.TestCase):
         self.assertIn("Pronto. Como funciona", fim); self.assertIn("Luna → Luna+ → Sol → Astra", fim); self.assertNotIn("Haiku", fim)
         self.assertTrue(self.ctx.cfg["setup_done"]); self.assertTrue(self.ctx.cfg["send_context"])
         self.assertIn("Setup já feito", c("setup 1"))
+
+
+def _row(ts, sess, tier, model, session_model, pt, cr, out, call=1, provider="openai-codex"):
+    return {"ts": ts, "session": sess, "turn": f"{sess}-{ts}", "call": call, "provider": provider, "session_model": session_model,
+            "model": model, "applied": model, "tier": tier, "prompt_tokens": pt, "cache_read": cr, "completion_tokens": out,
+            "jev_ms": 300, "jev_tokens": 750}
+
+
+class Relatorio(unittest.TestCase):
+    def _home(self, rows):
+        home = Path(tempfile.mkdtemp())
+        d = home / "plugin-data" / "jev-hermes-router"; d.mkdir(parents=True)
+        (d / "usage.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        return home
+
+    def test_descida_economiza_e_conta_turnos(self):
+        now = 1_000_000
+        rows = [_row(now - 60, "a", "leve", "gpt-6-luna", "gpt-6-sol", 20000, 0, 100),
+                _row(now - 50, "a", "leve", "gpt-6-luna", "gpt-6-sol", 21000, 20000, 50, call=2)]
+        s = rep.resumir(rep.load(self._home(rows) / "plugin-data/jev-hermes-router/usage.jsonl", None))
+        self.assertEqual((s.turnos, s.chamadas, s.desceu[0]), (1, 2, 2))
+        self.assertGreater(s.economia, 0.8)
+
+    def test_subida_aparece_como_gasto_extra(self):
+        rows = [_row(10, "b", "maximo", "gpt-6-astra", "gpt-6-sol", 30000, 0, 2000)]
+        s = rep.resumir(rows)
+        self.assertLess(s.economia, 0); self.assertEqual(s.subiu[0], 1)
+        self.assertIn("Gasto extra", rep.formatar(s, "24h"))
+
+    def test_troca_cobra_cache_frio(self):
+        # mesma sessão: 2ª chamada troca de modelo; o "sem jev" teria o cache quente
+        rows = [_row(1, "c", "pesado", "gpt-6-sol", "gpt-6-sol", 50000, 0, 100),
+                _row(2, "c", "leve", "gpt-6-luna", "gpt-6-sol", 50500, 0, 100)]
+        s = rep.resumir(rows)
+        self.assertEqual(s.trocas, 1)
+        base_2a = rep._cost(rep.PRICES["sol"], 500, 50000, 100)
+        self.assertAlmostEqual(s.desceu[2], base_2a, places=6)
+
+    def test_janela_e_vazio_falam(self):
+        home = self._home([_row(100, "a", "leve", "gpt-6-luna", "gpt-6-sol", 1000, 0, 10)])
+        self.assertIn("Nenhuma mensagem", rep.relatorio(home, "24h", now=100 + 2 * 86400))
+        self.assertIn("1 mensagens", rep.relatorio(home, "tudo"))
+
+    def test_linha_antiga_sem_call_nem_saida(self):
+        rows = [dict(_row(1, "a", "leve", "gpt-6-luna", "gpt-6-sol", 1000, 0, None)), dict(_row(2, "a", "leve", "gpt-6-luna", "gpt-6-sol", 1200, 1000, None))]
+        for r in rows:
+            r.pop("call")
+        s = rep.resumir(rows)
+        self.assertEqual((s.turnos, s.sem_saida), (1, 2))
 
 
 if __name__ == "__main__":

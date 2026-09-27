@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from . import jev as jevmod
 from . import policy as pol
+from . import report as rep
 
 logger = logging.getLogger("jev-hermes-router")
 _lock = threading.Lock()
@@ -160,14 +161,15 @@ def _apply(kw: dict, d: pol.Decision, data: dict) -> Optional[dict]:
         return None  # rotação/fallback mudou o provedor no meio do turno: não toca
     target = pol.LADDERS[provider][d.tier]
     request["model"] = target
+    effort = d.effort
     if provider == "openai-codex":
-        effort = d.effort
         if d.tier == 1:  # "padrão" no Codex é luna com esforço alto (não existe terra na assinatura)
             effort = "high" if pol.EFFORTS.index(effort) < pol.EFFORTS.index("high") else effort
         request["reasoning"] = {**(request.get("reasoning") or {}), "effort": effort}
     elif provider == "anthropic":
         _apply_anthropic_effort(request, target, d.effort)
     data["applied_model"] = target
+    data["applied_effort"] = effort  # o que foi pro provedor, não o que o Jev sugeriu
     return {"request": request, "source": "jev-hermes-router", "reason": f"{d.tier_name}/{d.effort}"}
 
 
@@ -203,15 +205,20 @@ def on_post_api_request(**kw) -> None:
         return None
     usage = kw.get("usage") or {}
     row = {
-        "ts": round(time.time()), "session": str(kw.get("session_id") or "")[:12], "turn": turn_id[:12],
+        "ts": round(time.time()), "session": str(kw.get("session_id") or ""), "turn": turn_id,
+        "call": int(kw.get("api_call_count") or 1),
         "provider": kw.get("provider"), "session_model": data.get("session_model"),
         "model": kw.get("response_model") or kw.get("model"), "applied": data.get("applied_model"),
         "tier": data["decision"].tier_name if "decision" in data else None,
-        "effort": data["decision"].effort if "decision" in data else None,
+        "effort": data.get("applied_effort") or (data["decision"].effort if "decision" in data else None),
+        "jev_effort": data["decision"].effort if "decision" in data else None,
         "asked": pol.TIERS[data["decision"].asked] if "decision" in data else None,
         "tags": data["decision"].tags if "decision" in data else [],
         "prompt_tokens": usage.get("prompt_tokens"), "cache_read": usage.get("cache_read_tokens"),
-        "completion_tokens": usage.get("completion_tokens"),
+        "cache_write": usage.get("cache_write_tokens"),
+        # CanonicalUsage do Hermes chama de output_tokens; completion_tokens fica de fallback
+        "completion_tokens": usage.get("output_tokens", usage.get("completion_tokens")),
+        "reasoning_tokens": usage.get("reasoning_tokens"),
         "jev_ms": data.get("ms"), "jev_tokens": data.get("jev_tokens"), "error": data.get("error"), "skip": data.get("skip"),
     }
     data["api"] = row
@@ -237,7 +244,7 @@ def on_transform_llm_output(**kw) -> Optional[str]:
     prefix = None
     if "decision" in data:
         d: pol.Decision = data["decision"]
-        prefix = d.line()
+        prefix = d.line(effort=data.get("applied_effort"))
         api = data.get("api") or {}
         if api.get("model") and api.get("applied") and not str(api["model"]).startswith(str(api["applied"])):
             prefix += f" · api {api['model']}"
@@ -358,7 +365,9 @@ def _explicacao() -> str:
         "• A cada mensagem, o Jev escolhe nível e quanto o modelo deve pensar.\n"
         "• Uma linha em cima de cada resposta mostra a escolha:  ⚙️ pesado · esforço 2 · 88%\n"
         "• Um \"manda bala\" fica no modelo que fez o plano. Tarefa arriscada (enviar, apagar, publicar) nunca desce.\n"
-        "• /jev mostra histórico e economia. /jev off desliga. /jev quieto some com a linha.\n\n"
+        "• /jev relatorio mostra quanto você economizou (hoje, semana, mes). Ou pergunte: \"quanto o Jev economizou essa semana?\"\n"
+        "• Quer o relatório todo dia às 21h? Peça: \"agenda o relatório diário do Jev\" (a skill jev-hermes-router:relatorio sabe fazer).\n"
+        "• /jev off desliga. /jev quieto some com a linha.\n\n"
         "Manda um \"oi\" pra ver funcionando."
     )
 
@@ -445,12 +454,17 @@ def jev_command(raw: str = "", **kw) -> str:
         _set("send_context", on); return "Mandando as 2 mensagens anteriores." if on else "Só a mensagem atual vai pro Jev."
     if sub == "stats":
         return _stats()
+    if sub in ("relatorio", "relatório", "economia"):
+        janela = {"hoje": "24h", "dia": "24h", "semana": "7d", "mes": "30d", "mês": "30d"}.get(arg.lower(), arg.lower() or "24h")
+        if janela not in rep.JANELAS:
+            return "Uso: /jev relatorio [24h|7d|30d|tudo]"
+        return rep.relatorio(_data_dir().parent.parent, janela)
     if not _cfg("setup_done", False):
         return "Ainda não configurado. Roda /jev setup"
     status = "ligado" if _cfg("enabled", True) else "desligado"
     sid = str(kw.get("session_id") or "")
     hist = _historico(sid) if sid else ""
-    return f"jev-hermes-router {status} · provedor {_cfg('provider')} · Jev via {_cfg('route')}\n{hist}\n\n{_stats()}\n\nComandos: setup · doctor · stats · off/on · quieto · contexto off/on"
+    return f"jev-hermes-router {status} · provedor {_cfg('provider')} · Jev via {_cfg('route')}\n{hist}\n\n{_stats()}\n\nComandos: setup · doctor · stats · relatorio [24h|7d|30d|tudo] · off/on · quieto · contexto off/on"
 
 
 # ── registro ──────────────────────────────────────────────────────────────────
@@ -462,4 +476,9 @@ def register(ctx) -> None:
     ctx.register_middleware("llm_request", on_llm_request)
     ctx.register_hook("post_api_request", on_post_api_request)
     ctx.register_hook("transform_llm_output", on_transform_llm_output)
-    ctx.register_command("jev", jev_command, description="Router de modelo por mensagem (Jev)", args_hint="[setup|doctor|stats|off|on|quieto|contexto]")
+    ctx.register_command("jev", jev_command, description="Router de modelo por mensagem (Jev)", args_hint="[setup|doctor|stats|relatorio|off|on|quieto|contexto]")
+    skill = Path(__file__).parent / "skills" / "relatorio" / "SKILL.md"
+    try:  # Hermes antigo sem register_skill: o /jev relatorio continua funcionando
+        ctx.register_skill("relatorio", skill, description="Relatório de economia do jev-hermes-router (dia, semana, mês)")
+    except Exception as exc:
+        logger.debug("jev-router: skill não registrada: %s", exc)

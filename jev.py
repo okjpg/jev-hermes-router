@@ -12,7 +12,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
-USER_AGENT = "jev-hermes-router/0.2 (+hermes plugin)"
+USER_AGENT = "jev-hermes-router/0.3 (+hermes plugin)"
 MODEL = "jev-latest"
 QUESTION_TYPES = {"noul", "choice", "score"}
 

@@ -122,10 +122,11 @@ class Decision:
     def tier_name(self) -> str:
         return TIERS[self.tier]
 
-    def line(self) -> str:
-        """A linha que o aluno vê em cima da resposta."""
+    def line(self, effort: str | None = None) -> str:
+        """A linha que o aluno vê em cima da resposta. ``effort`` = o que foi pro provedor."""
         conf = int(round(self.probs[self.tier] * 100))
-        parts = [f"⚙️ {self.tier_name} · esforço {EFFORTS.index(self.effort)} · {conf}%"]
+        eff = effort if effort in EFFORTS else self.effort
+        parts = [f"⚙️ {self.tier_name} · esforço {EFFORTS.index(eff)} · {conf}%"]
         parts += self.tags
         if self.ms:
             parts.append(f"{self.ms}ms")

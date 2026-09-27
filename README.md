@@ -43,6 +43,15 @@ Depois, abre o Hermes numa sessão nova e roda:
 
 São 3 perguntas. Leva um minuto. A chave do Jev vai no `~/.hermes/.env` como `TYPESAFE_API_KEY=...` (o wizard te diz onde pegar).
 
+Depois de alguns dias de uso, veja quanto economizou:
+
+```
+/jev relatorio          últimas 24h
+/jev relatorio semana   últimos 7 dias
+```
+
+Ou peça em linguagem natural ("quanto o Jev economizou essa semana?"): o plugin traz a skill `jev-hermes-router:relatorio`, que sabe puxar e ler o relatório. Pra receber todo dia no fim da tarde, veja [Relatório diário](#relatório-diário).
+
 ## O que ele faz
 
 **4 níveis.** Cada mensagem cai num nível, e o nível vira um modelo do provedor da sua sessão:
@@ -96,10 +105,81 @@ Isso é só pro Jev. Seu ChatGPT ou Claude continua no login de sempre.
 /jev setup        refaz as 3 perguntas
 /jev doctor       testa chave, provedor, versão do Hermes
 /jev stats        totais desde a instalação
+/jev relatorio    economia de cota: 24h (padrão), semana, mes, tudo
 /jev off | on     desliga / liga
 /jev quieto       esconde a linha de rota
 /jev contexto off | on
 ```
+
+## Relatório diário
+
+O relatório sai de `report.py`: um script puro, sem rede e sem LLM, que lê o log local do plugin (`~/.hermes/plugin-data/jev-hermes-router/usage.jsonl`). Pra agendar no fim do dia:
+
+```
+mkdir -p ~/.hermes/scripts
+cp ~/.hermes/plugins/jev-hermes-router/cron/jev_relatorio.py ~/.hermes/scripts/
+hermes cron create "0 21 * * *" --name jev-relatorio --no-agent \
+  --script jev_relatorio.py --deliver origin --failure-deliver local
+```
+
+Confira o horário real com `hermes cron list` (campo `Next run`). O relatório fala todo dia, mesmo sem mensagem roteada: silêncio seria igual a cron quebrado. Com vários perfis do Hermes, ele soma cada um separado.
+
+Exemplo de saída real (perfil de teste, 27/09/2026):
+
+```
+⚙️ Jev · últimas 24h
+17 mensagens, 36 chamadas ao modelo · leve 3 · padrao 8 · pesado 2 · maximo 4
+Consumo: US$ 1,75 equivalentes, contra US$ 1,18 se tudo rodasse no modelo da sessão
+Gasto extra líquido vs modelo da sessão: 49% (já cobra o cache perdido nas trocas)
+  ↓ 19 chamadas desceram de modelo: US$ 0,09 em vez de US$ 0,42 (77% a menos)
+  ↑ 2 chamadas subiram de modelo: US$ 0,57 em vez de US$ 0,02 (+US$ 0,55 pra ter o modelo mais forte)
+Contra deixar tudo no modelo máximo: 24% a menos
+Trocas de modelo: 9 · cache lido: 73% · Jev: 330 ms, US$ 0,0006
+Obs.: amostra pequena (17 mensagens), não tire conclusão ainda; 27 chamadas antigas sem tokens de saída, contadas só pela entrada.
+```
+
+### Como a conta é feita
+
+Assinatura não cobra por token, cobra em cota, e não existe API pública de cota. O relatório usa o **preço de lista da API** de cada modelo como proxy e compara, chamada por chamada:
+
+- **real**: os tokens que rodaram, no preço do modelo que o router escolheu, mais o custo do Jev;
+- **sem Jev**: os mesmos tokens no modelo da sessão, **com cache sempre quente**.
+
+A segunda conta é generosa com o "sem Jev" de propósito: toda troca de modelo esfria o cache, e o relatório cobra isso do router. Se o número é bom, é bom de verdade.
+
+## Quanto economiza (dados reais)
+
+Medido em 17 mensagens reais, num perfil de teste com sessão no `gpt-6-sol` (Codex por assinatura), em 26 e 27/09/2026. Conteúdo, revisão de contrato, resumo de e-mail, pergunta técnica, "ok" e "valeu".
+
+| Métrica | Resultado |
+|---|---|
+| Mensagens simples que desceram de modelo | **até 95% menos cota** (77% na média das 19 chamadas) |
+| Contra usar sempre o modelo máximo | **24% a 47% menos** |
+| Líquido contra o modelo da sessão (sol) | **49% a mais**: 2 mensagens subiram pro astra |
+
+Leitura honesta: o router economiza muito no que é simples e **gasta mais no que é difícil**, porque manda revisão de contrato e arquitetura pro modelo mais forte. Se sua sessão já fica no modelo máximo, ele só economiza. Se fica no intermediário, ele troca cota por qualidade nas mensagens que pedem isso. O relatório separa as duas coisas (↓ e ↑) pra você ver o que está pagando.
+
+A amostra é pequena. Número de semana cheia entra aqui quando tiver.
+
+## O que aprendemos testando
+
+Coisas que só apareceram rodando de verdade. Se você vai mexer no plugin, leia antes.
+
+**1. Nem todo modelo do ladder existe na sua conta.** A primeira versão mandava o nível "padrão" pro `gpt-6-terra`. A assinatura ChatGPT não dá acesso a ele: `HTTP 400 · The 'gpt-6-terra' model is not supported when using Codex with a ChatGPT account`. O Hermes marca o modelo como indisponível na sessão e o turno morre. Correção: no Codex, "padrão" é `gpt-6-luna` com esforço alto. Antes de pôr um modelo no ladder, teste com a conta que o aluno vai usar, não com a sua.
+
+**2. A linha precisa mostrar o que foi pro provedor, não o que o Jev sugeriu.** Com o "padrão" virando luna+high, a linha continuava dizendo `esforço 0` e o log gravava `low`, enquanto o request ia com `high`. Quem usava a linha como dado de teste lia errado. Agora a linha e o log mostram o esforço aplicado, e o log guarda a sugestão do Jev separada (`jev_effort`).
+
+**3. Confira o nome dos campos do runtime.** O Hermes entrega uso de tokens como `output_tokens`, não `completion_tokens`. O plugin gravava `null` em toda saída e ninguém percebeu até tentar calcular custo. Sem token de saída, não há relatório de economia. Teste o formato real, não o que você acha que ele é.
+
+**4. O contador de uso do Hermes não enxerga a troca.** O painel de uso da sessão atribui todos os tokens ao modelo da sessão, mesmo quando o router mandou pra outro. Pra medir o router, use `/jev relatorio`. O modelo que respondeu de verdade vem de `response_model` no `post_api_request`, e é esse que o log grava.
+
+**5. Trocar de modelo custa.** Em toda troca, a primeira chamada chega com cache zerado e o raciocínio do modelo anterior é descartado (`encrypted_content is sealed to its issuer`). Por isso a política segura "ok", "sim", "manda bala" no modelo que já estava (`segue`), e por isso o relatório cobra o cache frio do router.
+
+**6. Escalar é uma escolha, não um bug.** Numa sessão em `sol`, o router mandou revisão de contrato e desenho de sistema pro `astra`. A resposta ficou melhor e a conta ficou maior. Um roteador que só desce é um redutor de custo; este também sobe. Se você quer só economia, deixe a sessão no modelo máximo e o router vai apenas descer.
+
+**7. Luna escreve genérico.** Um post de LinkedIn de 150 palavras caiu em "padrão" e saiu correto, mas com frase pronta ("Não é sobre X. É sobre Y."). Pra texto que precisa soar como você, peça explicitamente no seu tom ou com referência: o Jev lê a natureza da tarefa, e "no meu tom, com estes exemplos" puxa pra `pesado`.
+
+**8. Uma sessão por vez no mesmo perfil.** Duas instalações abrindo o mesmo perfil ao mesmo tempo (Desktop e terminal) compartilham config e dados. O Hermes avisa; o plugin guarda estado de sessão em memória, então cada processo decide sozinho. Não quebra nada, mas o `/jev` de um não vê o outro. O relatório lê o arquivo e vê os dois.
 
 ## Como a política decide
 
@@ -117,7 +197,7 @@ Validado em 162 turnos reais de uma semana de uso antes de sair. A política tod
 python3 -m unittest discover -s tests -v
 ```
 
-26 testes, sem rede, sem Hermes.
+33 testes, sem rede, sem Hermes.
 
 ## Lineage
 

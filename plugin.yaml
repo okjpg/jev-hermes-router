@@ -1,5 +1,5 @@
 name: jev-hermes-router
-version: 0.2.0
+version: 0.3.0
 description: "Escolhe o modelo certo pra cada mensagem (leve → máximo) usando o Jev da TypeSafe. Só dentro do provedor da sessão, só com login por assinatura (Codex / Claude). Falha aberta."
 author: "Bruno Okamoto · Pixel Educação"
 license: MIT
