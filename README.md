@@ -76,7 +76,7 @@ Ou peça em linguagem natural ("quanto o Jev economizou essa semana?"): o plugin
 - **Não troca de provedor.** Sessão no ChatGPT fica no ChatGPT; sessão no Claude fica no Claude. Misturar quebra o histórico de raciocínio e zera o cache.
 - **Não roteia cron, subagente, worker de Kanban** nem chamadas auxiliares (título, compressão). Só a mensagem que você digita.
 - **Não funciona com chave de API ou OpenRouter no LLM.** O router existe pra fazer sua assinatura render mais; com chave, a economia é outra conversa. Ele detecta e fica desligado.
-- **Não economiza dólar na assinatura.** Economiza cota: mais mensagens antes de bater o limite semanal. Se você paga por token, a economia é em token.
+- **Não economiza dólar na assinatura.** O objetivo é poupar cota: modelo menor nas mensagens simples, mais mensagens antes do limite semanal. Quanto exatamente, ninguém mede por fora (veja [Como a conta é feita](#como-a-conta-é-feita)). Se você paga por token, a economia é em token.
 
 ## Privacidade
 
@@ -107,7 +107,7 @@ Isso é só pro Jev. Seu ChatGPT ou Claude continua no login de sempre.
 /jev setup        refaz as 3 perguntas
 /jev doctor       testa chave, provedor, versão do Hermes
 /jev stats        totais desde a instalação
-/jev relatorio    economia de cota: 24h (padrão), semana, mes, tudo
+/jev relatorio    economia estimada: 24h (padrão), semana, mes, tudo
 /jev off | on     desliga / liga
 /jev quieto       esconde a linha de rota
 /jev contexto off | on
@@ -147,21 +147,27 @@ Assinatura não cobra por token, cobra em cota, e não existe API pública de co
 - **real**: os tokens que rodaram, no preço do modelo que o router escolheu, mais o custo do Jev;
 - **sem Jev**: os mesmos tokens no modelo da sessão, **com cache sempre quente**.
 
-A segunda conta é generosa com o "sem Jev" de propósito: toda troca de modelo esfria o cache, e o relatório cobra isso do router. Se o número é bom, é bom de verdade.
+A segunda conta é generosa com o "sem Jev" de propósito: toda troca de modelo esfria o cache, e o relatório cobra isso do router.
+
+Dois limites dessa conta: preço de API não é cota de assinatura (não existe tabela pública que converta um no outro), e ela assume que o outro modelo gastaria os mesmos tokens, o que nem sempre é verdade. Leia o dólar como **custo equivalente em preço de API**, não como economia na sua fatura.
 
 ## Quanto economiza (dados reais)
 
-Medido em 17 mensagens reais, num perfil de teste com sessão no `gpt-6-sol` (Codex por assinatura), em 26 e 27/09/2026. Conteúdo, revisão de contrato, resumo de e-mail, pergunta técnica, "ok" e "valeu".
+Medido em 17 mensagens reais, num perfil de teste com sessão no `gpt-6-sol` (Codex por assinatura), em 26 e 27/09/2026. Conteúdo, revisão de contrato, resumo de e-mail, pergunta técnica, "ok" e "valeu". Valores em custo equivalente de preço de API.
 
-| Métrica | Resultado |
-|---|---|
-| Mensagens simples que desceram de modelo | **até 95% menos cota** (77% na média das 19 chamadas) |
-| Contra usar sempre o modelo máximo | **24% a 47% menos** |
-| Líquido contra o modelo da sessão (sol) | **49% a mais**: 2 mensagens subiram pro astra |
+| Métrica | Dia com log completo (6 mensagens) | Total (17 mensagens)* |
+|---|---|---|
+| Chamadas que desceram de modelo | **95% menos** | 77% menos |
+| Contra usar sempre o modelo máximo | 47% menos | 24% menos |
+| Líquido contra o modelo da sessão (sol) | 162% a mais | 49% a mais |
 
-Leitura honesta: o router economiza muito no que é simples e **gasta mais no que é difícil**, porque manda revisão de contrato e arquitetura pro modelo mais forte. Se sua sessão já fica no modelo máximo, ele só economiza. Se fica no intermediário, ele troca cota por qualidade nas mensagens que pedem isso. O relatório separa as duas coisas (↓ e ↑) pra você ver o que está pagando.
+\* 27 das 36 chamadas do total são de antes da correção do log e não têm tokens de saída, que são a parte mais cara. A coluna total é só indicativa.
 
-A amostra é pequena. Número de semana cheia entra aqui quando tiver.
+O que os dados sustentam hoje: **até 95% menos custo equivalente em preço de API nas mensagens simples**. Nenhum percentual geral ainda.
+
+Leitura honesta: o router economiza muito no que é simples e **gasta mais no que é difícil**, porque manda revisão de contrato e arquitetura pro modelo mais forte. Se sua sessão já fica no modelo máximo, ele só economiza. Se fica no intermediário, ele troca custo por qualidade nas mensagens que pedem isso. O relatório separa as duas coisas (↓ e ↑) pra você ver o que está pagando.
+
+A amostra é pequena, e ainda não medimos se descer de modelo piora a resposta. Próximos números vão sair separados por modelo de partida da sessão, junto com um teste pareado de qualidade (a mesma mensagem no modelo barato e no da sessão, comparadas às cegas).
 
 ## O que aprendemos testando
 
